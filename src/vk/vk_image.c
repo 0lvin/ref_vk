@@ -19,6 +19,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "header/local.h"
+#define STB_DXT_IMPLEMENTATION
+#include "../files/stb_dxt.h"
 
 image_t		vktextures[MAX_VKTEXTURES];
 int		numvktextures = 0;
@@ -1201,9 +1203,45 @@ Vk_LoadPic(const char *name, byte *pic, int width, int realwidth,
 
 	assert(texBuffer != NULL);
 
-	QVk_CreateTexture(&image->vk_texture, (unsigned char*)texBuffer,
-		image->upload_width, image->upload_height,
-		nolerp ? S_NEAREST : vk_current_sampler, (type == it_sky));
+	if (image->upload_width % 4 == 0 && image->upload_height % 4 == 0 && type == it_wall)
+	{
+		R_Printf(PRINT_ALL, "%s: Check %s: %dx%d\n", __func__,
+			image->name,
+			image->upload_width / 4, image->upload_height / 4);
+		byte *temp_tile = malloc(4 * 4 * 4);
+		/* 64bit texel = 4 * 4 pixels */
+		byte *tempdxt = malloc(image->upload_width * image->upload_height / 16 * 16);
+		// memset(tempdxt, 0, image->upload_width * image->upload_height / 16 * 16);
+		image->vk_texture.format = VK_FORMAT_BC7_UNORM_BLOCK;
+		byte *dxt_dst = tempdxt;
+		for (int y=0; y < image->upload_height; y+=4)
+		{
+			for (int x=0; x < image->upload_width; x+=4)
+			{
+				byte *curr_src = texBuffer + (x + y * image->upload_width) * 4;
+				byte *curr_dst = temp_tile;
+				for(int j=0; j < 4; j++)
+				{
+					memcpy(curr_dst, curr_src, 4 * 4);
+					curr_dst += (4 * 4);
+					curr_src += (4 * image->upload_width);
+				}
+				stb_compress_dxt_block(dxt_dst, temp_tile, 1, 0);
+				dxt_dst += 16;
+			}
+		}
+		QVk_CreateTexture(&image->vk_texture, tempdxt,
+			image->upload_width, image->upload_height,
+			nolerp ? S_NEAREST : vk_current_sampler, (type == it_sky));
+		free(tempdxt);
+		free(temp_tile);
+	}
+	else
+	{
+		QVk_CreateTexture(&image->vk_texture, (unsigned char*)texBuffer,
+			image->upload_width, image->upload_height,
+			nolerp ? S_NEAREST : vk_current_sampler, (type == it_sky));
+	}
 	QVk_DebugSetObjectName((uint64_t)image->vk_texture.resource.image,
 		VK_OBJECT_TYPE_IMAGE, va("Image: %s", name));
 	QVk_DebugSetObjectName((uint64_t)image->vk_texture.imageView,
