@@ -573,6 +573,11 @@ image_create(ImageResource_t *img,
 	assert(img);
 	VkResult result = VK_SUCCESS;
 
+	// failed create
+	/*
+VK_ERROR: Validation Error: [ VUID-VkImageCreateInfo-imageCreateMaxMipLevels-02251 ] Object 0: handle = 0xaaaaaca91b90, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xbebcae79 | vkCreateImage(): Format VK_FORMAT_ASTC_4x4_SRGB_BLOCK is not supported for this combination of parameters and VkGetPhysicalDeviceImageFormatProperties returned back VK_ERROR_FORMAT_NOT_SUPPORTED. The Vulkan spec states: Each of the following values (as described in Image Creation Limits) must not be undefined : imageCreateMaxMipLevels, imageCreateMaxArrayLayers, imageCreateMaxExtent, and imageCreateSampleCounts (https://www.khronos.org/registry/vulkan/specs/1.3-extensions/html/vkspec.html#VUID-VkImageCreateInfo-imageCreateMaxMipLevels-02251) (validation)
+quake2: src/vk/vk_validation.c:59: debugUtilsCallback: Assertion `!"Vulkan error occured!"' failed.
+*/
 	result = vkCreateImage(vk_device.logical, &img_create_info, NULL, &img->image);
 	if(result != VK_SUCCESS) {
 		R_Printf(PRINT_ALL, "%s:%d: VkResult verification: %s\n",

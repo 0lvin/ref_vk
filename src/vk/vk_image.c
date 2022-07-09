@@ -318,6 +318,13 @@ VkResult QVk_CreateImageView(const VkImage *image, VkImageAspectFlags aspectFlag
 VkResult QVk_CreateImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, qvktexture_t *texture)
 {
 	VkMemoryPropertyFlags mem_skip = 0;
+	/*
+	Each of the following values (as described in Image Creation Limits) must not be undefined :
+	* imageCreateMaxMipLevels,
+	* imageCreateMaxArrayLayers,
+	* imageCreateMaxExtent, and
+	* imageCreateSampleCounts
+	 */
 	VkImageCreateInfo imageInfo = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.imageType = VK_IMAGE_TYPE_2D,
@@ -1203,38 +1210,72 @@ Vk_LoadPic(const char *name, byte *pic, int width, int realwidth,
 
 	assert(texBuffer != NULL);
 
-	if (image->upload_width % 4 == 0 && image->upload_height % 4 == 0 && type == it_wall)
+	if (image->upload_width % 4 == 0 && image->upload_height % 4 == 0 && type == it_wall && image->upload_width > 4 && image->upload_height > 4)
 	{
 		R_Printf(PRINT_ALL, "%s: Check %s: %dx%d\n", __func__,
 			image->name,
 			image->upload_width / 4, image->upload_height / 4);
-		byte *temp_tile = malloc(4 * 4 * 4);
-		/* 64bit texel = 4 * 4 pixels */
-		byte *tempdxt = malloc(image->upload_width * image->upload_height / 16 * 16);
-		// memset(tempdxt, 0, image->upload_width * image->upload_height / 16 * 16);
-		image->vk_texture.format = VK_FORMAT_BC7_UNORM_BLOCK;
-		byte *dxt_dst = tempdxt;
-		for (int y=0; y < image->upload_height; y+=4)
+		/* 128bit texel = 4 * 4 pixels */
+		byte *tempdxt = malloc(image->upload_width * image->upload_height * 128 / 8);
+		memset(tempdxt, 128, image->upload_width * image->upload_height * 128 / 8);
+		image->vk_texture.format = VK_FORMAT_ASTC_4x4_SRGB_BLOCK;
+		//image->vk_texture.format = VK_FORMAT_BC7_UNORM_BLOCK;
+
+/*
+    https://www.khronos.org/registry/OpenGL/extensions/OES/OES_texture_compression_astc.txt
+
+    The layout of a 2D Void-Extent block is as follows:
+
+    127 126 125 124 123 122 121 120 119 118 117 116 115 114 113 112
+     ---------------------------------------------------------------
+    |                 Block color A component                       |
+     ---------------------------------------------------------------
+
+    111 110 109 108 107 106 105 104 103 102 101 100 99  98  97  96
+     ---------------------------------------------------------------
+    |                 Block color B component                       |
+     ---------------------------------------------------------------
+
+    95  94  93  92  91  90  89  88  87  86  85  84  83  82  81  80
+     ---------------------------------------------------------------
+    |                 Block color G component                       |
+     ---------------------------------------------------------------
+
+    79  78  77  76  75  74  73  72  71  70  69  68  67  66  65  64
+     ---------------------------------------------------------------
+    |                 Block color R component                       |
+     ---------------------------------------------------------------
+
+    63  62  61  60  59  58  57  56  55  54  53  52  51  50  49  48
+     ---------------------------------------------------------------
+    |    Void-extent maximum T coordinate              |    Min T
+     ---------------------------------------------------------------
+
+    47  46  45  44  43  42  41  40  39  38  37  36  35  34  33  32
+     ---------------------------------------------------------------
+    Void-extent minimum T coordinate       |   Void-extent max S
+     ---------------------------------------------------------------
+
+    31  30  29  28  27  26  25  24  23  22  21  20  19  18  17  16
+     ---------------------------------------------------------------
+    Void-extent max S coord    |  Void-extent minimum S coordinate
+     ---------------------------------------------------------------
+
+    15  14  13  12  11  10  9   8   7   6   5   4   3   2   1   0
+     --------------------------------------------------------------
+    Min S coord    | 1 | 1 | D | 1 | 1 | 1 | 1 | 1 | 1 | 1 | 0 | 0 |
+     --------------------------------------------------------------
+ */
+		for(int i = 0; i < image->upload_width * image->upload_height * 128 / 8; i += (128 / 8))
 		{
-			for (int x=0; x < image->upload_width; x+=4)
-			{
-				byte *curr_src = texBuffer + (x + y * image->upload_width) * 4;
-				byte *curr_dst = temp_tile;
-				for(int j=0; j < 4; j++)
-				{
-					memcpy(curr_dst, curr_src, 4 * 4);
-					curr_dst += (4 * 4);
-					curr_src += (4 * image->upload_width);
-				}
-				stb_compress_dxt_block(dxt_dst, temp_tile, 1, 0);
-				dxt_dst += 16;
-			}
+			tempdxt[i] = 0xfc;
+			tempdxt[i + 1] = 0xfe;
 		}
+
 		QVk_CreateTexture(&image->vk_texture, tempdxt,
 			image->upload_width, image->upload_height,
 			nolerp ? S_NEAREST : vk_current_sampler, (type == it_sky));
 		free(tempdxt);
-		free(temp_tile);
 	}
 	else
 	{
